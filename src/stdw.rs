@@ -5,6 +5,8 @@ use futures::*;
 use std::rc::Rc;
 use std::cell::RefCell;
 
+use stdweb::web::*;
+
 pub struct AudioContext {
     reference:Reference,
     destination:AudioDestinationNode,
@@ -13,22 +15,37 @@ pub struct AudioContext {
 
 impl AudioContext {
 
-    fn new() {
-        
+    pub fn new() -> AudioContext {
+        let res = js!{
+            window.AudioContext = window.AudioContext || window.webkitAudioContext;
+            return new AudioContext();
+        };
+        let reference = res.into_reference().unwrap();
+        let destination_res = js!{ return @{&reference}.destination };
+        AudioContext {
+            reference,
+            destination:AudioDestinationNode(destination_res.into_reference().unwrap())
+        }
+    }
+
+    pub fn destination(&self) -> &AudioDestinationNode {
+        &self.destination
     }
 
     pub fn create_buffer_source(&self) -> AudioBufferSourceNode {
-        let res = js!{ @{&self.reference}.createBufferSource(); };
+        let res = js!{ return @{&self.reference}.createBufferSource(); };
         AudioBufferSourceNode(res.into_reference().unwrap())
     }
 
     pub fn decode_audio_data(&self,data:&[u8]) -> AudioBufferFuture {
         let (future,inner) = AudioBufferFuture::new();
         js!{
-            @{&self.reference}.decodeAudioData(@{data},@{move|buffer:Value|{
+            @{&self.reference}.decodeAudioData(@{ unsafe { TypedArray::from(data) } }.buffer,@{move|buffer:Value|{
+                js!{ console.log("callback",@{&buffer})};
                 *inner.borrow_mut() = Some(buffer.into_reference()
-                .map(|reference|Async::Ready(AudioBuffer{reference}))
+                .map(|reference|Async::Ready(AudioBuffer(reference)))
                 .ok_or(Error::AudioDecodeFailed));
+                js!{ console.log("loaded")};
             }})
         }
         future
@@ -47,23 +64,25 @@ pub struct AudioBufferSourceNode (Reference);
 
 
 impl AudioBufferSourceNode {
-    fn new() {
-        
+
+    pub fn set_buffer(&self,buffer:&AudioBuffer){
+        js!{ @{&self.0}.buffer = @{&buffer.0} };
     }
 
-    pub fn connect(dest:&AudioDestinationNode) {
-
+    pub fn connect(&self,dest:&AudioDestinationNode) {
+        js!{ @{&self.0}.connect(@{&dest.0}) };
     }
+
+    pub fn start(&self,position:u32){
+        js!{ @{&self.0}.start(@{position}); };
+    }
+
 }
 
-pub struct AudioDestinationNode {
-
-}
+pub struct AudioDestinationNode(Reference);
 
 
-pub struct AudioBuffer {
-    reference:Reference,
-}
+pub struct AudioBuffer(Reference);
 
 
 
@@ -111,3 +130,6 @@ impl AudioBuffer {
 
 }
 
+fn log(msg:&str){
+    js!{ console.log(msg)};
+}

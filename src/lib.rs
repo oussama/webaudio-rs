@@ -3,8 +3,10 @@ extern crate futures;
 extern crate stdweb;
 
 
-mod common;
+mod stdw;
 
+
+pub use stdw::*;
 
 
 #[cfg(test)]
