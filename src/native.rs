@@ -1,14 +1,17 @@
-use stdweb::*;
-use stdweb::unstable::TryInto;
+use rodio::*;
+use rodio;
 
 use futures::*;
 use std::rc::Rc;
 use std::cell::RefCell;
 
-use stdweb::web::*;
+use std::io::{Read,Seek,BufReader,Cursor,SeekFrom};
+use std::io::prelude::*;
+//use errors::*;
+
 
 pub struct AudioContext {
-    reference:Reference,
+    endpoint:Endpoint,
     destination:AudioDestinationNode,
 }
 
@@ -16,16 +19,10 @@ pub struct AudioContext {
 impl AudioContext {
 
     pub fn new() -> AudioContext {
-        let res = js!{
-            window.AudioContext = window.AudioContext || window.webkitAudioContext;
-            return new AudioContext();
-        };
-        let reference = res.into_reference().unwrap();
-        let destination_res = js!{ return @{&reference}.destination };
-        AudioContext {
-            reference,
-            destination:AudioDestinationNode(destination_res.into_reference().unwrap())
-        }
+        
+        let endpoint = rodio::default_endpoint().unwrap();
+        AudioContext { endpoint,destination:AudioDestinationNode }
+
     }
 
     pub fn destination(&self) -> &AudioDestinationNode {
@@ -33,21 +30,19 @@ impl AudioContext {
     }
 
     pub fn create_buffer_source(&self) -> AudioBufferSourceNode {
-        let res = js!{ return @{&self.reference}.createBufferSource(); };
-        AudioBufferSourceNode(res.into_reference().unwrap())
+        let sink = rodio::Sink::new(&self.endpoint);
+        AudioBufferSourceNode{sink,buffer:None}
     }
 
-    pub fn decode_audio_data(&self,data:&[u8]) -> AudioBufferFuture {
+    pub fn decode_audio_data<T:Into<Vec<u8>>>(&self,data:T) -> AudioBufferFuture
+    {
+        let buffer = BufReader::new(Cursor::new(data.into()));
         let (future,inner) = AudioBufferFuture::new();
-        js!{
-            @{&self.reference}.decodeAudioData(@{ unsafe { TypedArray::from(data) } }.buffer,@{move|buffer:Value|{
-                js!{ console.log("callback",@{&buffer})};
-                *inner.borrow_mut() = Some(buffer.into_reference()
-                .map(|reference|Async::Ready(AudioBuffer(reference)))
-                .ok_or(Error::AudioDecodeFailed));
-                js!{ console.log("loaded")};
-            }})
-        }
+        *inner.borrow_mut() = if let Ok(decoder) = Decoder::new(buffer) {
+            Some(Ok(Async::Ready(AudioBuffer(decoder))))
+        }else{
+            Some(Err(Error::AudioDecodeFailed))
+        };
         future
     }
 
@@ -60,29 +55,37 @@ pub enum Error {
 }
 
 
-pub struct AudioBufferSourceNode (Reference);
+pub struct AudioBufferSourceNode {
+    buffer:Option<AudioBuffer>,
+    sink:rodio::Sink
+}
 
 
 impl AudioBufferSourceNode {
 
-    pub fn set_buffer(&self,buffer:AudioBuffer){
-        js!{ @{&self.0}.buffer = @{&buffer.0} };
+    pub fn set_buffer(&mut self,buffer:AudioBuffer){
+        //self.buffer = Some(buffer);
+        self.sink.append(buffer.0);
+        self.sink.pause();
     }
 
     pub fn connect(&self,dest:&AudioDestinationNode) {
-        js!{ @{&self.0}.connect(@{&dest.0}) };
+        //js!{ @{&self.0}.connect(@{&dest.0}) };
     }
 
-    pub fn start(&self,position:u32){
-        js!{ @{&self.0}.start(@{position}); };
+    pub fn start(&self,position:u64){
+        //self.buffer.expect("set_buffer first").0
+        // .seek(SeekFrom::Start(position));
+        //self.sink.sleep_until_end();
+        self.sink.play();
     }
 
 }
 
-pub struct AudioDestinationNode(Reference);
+pub struct AudioDestinationNode;
 
 
-pub struct AudioBuffer(Reference);
+pub struct AudioBuffer(Decoder<BufReader<Cursor<Vec<u8>>>>);
 
 
 
@@ -131,5 +134,5 @@ impl AudioBuffer {
 }
 
 fn log(msg:&str){
-    js!{ console.log(msg)};
+   // js!{ console.log(msg)};
 }

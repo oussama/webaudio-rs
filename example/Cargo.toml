@@ -1,5 +1,5 @@
 [package]
-name = "wasm-webgl-rs"
+name = "webaudio-example"
 version = "0.1.0"
 authors = ["Oussama <md.oussama@gmail.com>"]
 

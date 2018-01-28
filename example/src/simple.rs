@@ -12,20 +12,24 @@ pub fn main() {
     let file_data = include_bytes!("../assets/nocturne.ogx");
 
     let ctx = AudioContext::new();
-    let mut future = ctx.decode_audio_data(file_data);
+    let mut future = ctx.decode_audio_data(&file_data[..]);
+
+    let mut sources = Vec::new();
 
     app.run(move |_t:&mut App| {
-        if let Ok(ref data) = future.poll() {
+        if let Ok(data) = future.poll() {
             match data {
-                &Async::Ready(ref buffer) => {
+                Async::Ready(buffer) => {
                     let mut source = ctx.create_buffer_source(); // creates a sound source
                     source.set_buffer(buffer);                    // tell the source which sound to play
                     source.connect(ctx.destination());       // connect the source to the context's destination (the speakers)
                     source.start(0);
+                    sources.push(source);
                 }
                 _ => {}
             }
         }
+        //println!("{}",sources.len());
     });
 
 }

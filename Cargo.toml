@@ -6,5 +6,11 @@ authors = ["Oussama <md.oussama@gmail.com>"]
 
 
 [dependencies]
-stdweb = { git = "https://github.com/koute/stdweb" }
 futures = "*"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+stdweb = { git = "https://github.com/koute/stdweb" }
+
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+rodio = { git = "https://github.com/tomaka/rodio" }
