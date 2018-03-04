@@ -17,17 +17,12 @@ pub fn main() {
     let mut sources = Vec::new();
 
     app.run(move |_t:&mut App| {
-        if let Ok(data) = future.poll() {
-            match data {
-                Async::Ready(buffer) => {
+        if let Some(buffer) = future.take() {
                     let mut source = ctx.create_buffer_source(); // creates a sound source
                     source.set_buffer(buffer);                    // tell the source which sound to play
                     source.connect(ctx.destination());       // connect the source to the context's destination (the speakers)
                     source.start(0);
                     sources.push(source);
-                }
-                _ => {}
-            }
         }
         //println!("{}",sources.len());
     });

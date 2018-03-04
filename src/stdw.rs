@@ -2,8 +2,8 @@ use stdweb::*;
 use stdweb::unstable::TryInto;
 
 use futures::*;
-use std::rc::Rc;
-use std::cell::RefCell;
+use std::sync::{Arc,Mutex};
+
 
 use stdweb::web::*;
 
@@ -42,7 +42,7 @@ impl AudioContext {
         js!{
             @{&self.reference}.decodeAudioData(@{ unsafe { TypedArray::from(data) } }.buffer,@{move|buffer:Value|{
                 js!{ console.log("callback",@{&buffer})};
-                *inner.borrow_mut() = Some(buffer.into_reference()
+                *inner.lock().unwrap() = Some(buffer.into_reference()
                 .map(|reference|Async::Ready(AudioBuffer(reference)))
                 .ok_or(Error::AudioDecodeFailed));
                 js!{ console.log("loaded")};
@@ -82,18 +82,27 @@ impl AudioBufferSourceNode {
 pub struct AudioDestinationNode(Reference);
 
 
+#[derive(Debug,Clone)]
 pub struct AudioBuffer(Reference);
 
 
 
 pub struct AudioBufferFuture {
-    inner:Rc<RefCell<Option<Poll<AudioBuffer,Error>>>>,
+    inner:Arc<Mutex<Option<Poll<AudioBuffer,Error>>>>,
 }
 
 impl AudioBufferFuture {
-    pub fn new() -> (AudioBufferFuture,Rc<RefCell<Option<Poll<AudioBuffer,Error>>>>) {
-        let inner = Rc::new(RefCell::new(None));
+    
+    pub fn new() -> (AudioBufferFuture,Arc<Mutex<Option<Poll<AudioBuffer,Error>>>>) {
+        let inner = Arc::new(Mutex::new(None));
         (AudioBufferFuture{inner:inner.clone()},inner)
+    }
+
+    pub fn take(&mut self) -> Option<AudioBuffer> {
+        match self.poll() {
+            Ok(Async::Ready(buffer)) => Some(buffer),
+            _ => None
+        }
     }
 }
 
@@ -103,7 +112,11 @@ impl Future for AudioBufferFuture {
     type Error = Error;
 
     fn poll(&mut self) -> Poll<Self::Item,Self::Error> {
-        self.inner.borrow_mut().take().unwrap_or(Ok(Async::NotReady))
+        if let Ok(mut guard) = self.inner.lock() {
+            guard.take().unwrap_or(Ok(Async::NotReady))
+        }else{
+            Ok(Async::NotReady)
+        }
     }
 }
 
